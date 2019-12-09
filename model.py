@@ -5,7 +5,7 @@ class PPMIModel(object):
     """
     Implementation of a positive pointwise mutual information semantic model.
     """
-    def __init__(self,corpus_file,output_path,word_list,L=2,k=1,alpha=0.75,weighting='unweighted',verbose=True):
+    def __init__(self,corpus_file,output_path,word_list,L=2,k=1,alpha=0.75,weighting='unweighted'):
         """
         INPUT:
         ------
@@ -40,9 +40,6 @@ class PPMIModel(object):
 
                 'word2vec' : word to vec uses variable length windows (half window size ~ U(1,L))
                     and weights "inverse harmonically"; for L = 2, weights are [1,1/2,-,1/2,1]
-
-            verbose: bool, optional
-                set to True to turn on progress reporting
         """
         # set the context map
         self.context_map = {'unweighted':self.unweighted_context,'glove':self.glove_context,'word2vec':self.word2vec_context}
@@ -52,11 +49,18 @@ class PPMIModel(object):
         if not os.path.exists(self.output_path):
             os.mkdir(self.output_path)
         self.word_list = word_list
+        self.hyperp = {}
         self.hyperp['L'] = L
         self.hyperp['k'] = k
         self.hyperp['alpha'] = alpha
         self.hyperp['weighting'] = weighting
-        self.verbose = verbose
+        # custom logging module
+        self.logger = logging.getLogger(__name__)
+        self.handler = logging.StreamHandler()
+        self.formatter = logging.Formatter('%(asctime)s : %(name)s : %(message)s')
+        self.handler.setFormatter(self.formatter)
+        self.logger.addHandler(self.handler)
+        self.logger.setLevel(logging.INFO)            
 
 
     def train(self):
@@ -64,8 +68,8 @@ class PPMIModel(object):
         Trains the model on the text in the corpus, using the current values of the
         hyperparameters.
         """
-        if self.verbose:
-            logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+        self.logger.info('Starting model')
+        self.logger.info('Writing to %s' % self.output_path)
 
         # do the pair counting
         wc_counts = self.count_pairs()
@@ -75,6 +79,8 @@ class PPMIModel(object):
 
         # compute all pairwise similiarities from the ppmi vectors
         sims = self.calculate_sims(ppmi)
+
+        self.logger.info('Model complete!')
 
         return sims
 
@@ -105,9 +111,9 @@ class PPMIModel(object):
                                     wc_counts[(word,c)] += v
                 # write a log message if we've made it through 10000 articles
                 if (n_docs % 10000 == 0):
-                    logging.info("Counted (w,c) pairs in  " + str(n_articles) + " articles")
-        logging.info("(w,c) pair counting complete!")
-        logging.info("Number of articles: " + str(n_articles))
+                    self.logger.info("Counted (w,c) pairs in  " + str(n_docs) + " articles")
+        self.logger.info("(w,c) pair counting complete!")
+        self.logger.info("Number of articles: " + str(n_docs))
         # dump the counts
         pickle.dump(wc_counts,open(os.path.join(self.output_path,'wc-counts.pydb'),'wb'))
         return wc_counts
@@ -144,7 +150,7 @@ class PPMIModel(object):
             if ppmi_value > 0.0:
                 ppmi[k[0]][k[1]] = ppmi_value
 
-        logging.info("PPMI vectors calculated!")
+        self.logger.info("PPMI vectors calculated!")
         # dump the ppmi dict
         pickle.dump(ppmi,open(os.path.join(self.output_path,'ppmi-vecs.pydb'),'wb'))
         return ppmi
@@ -174,7 +180,7 @@ class PPMIModel(object):
                 cos_den = sqrt(sum([x**2 for x in ppmi[w_i].values()]))*sqrt(sum([x**2 for x in ppmi[w_j].values()]))
                 sims[(w_i,w_j)] = cos_num/cos_den
 
-        logging.info("Pairwise similarities calculated!")
+        self.logger.info("Pairwise similarities calculated!")
         # dump the similarity database as a pickle
         pickle.dump(sims,open(os.path.join(self.output_path,'ppmi-sims.pydb'),'wb'))
 

@@ -3,6 +3,16 @@ from numpy import unique
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
+def write_wordlist_file(word_list,file_name):
+    """
+    Writes a list of words to a one-word-per-line text file.
+    """
+    f = open(file_name,'w')
+    for w in word_list:
+        f.write('%s\n' % w)
+    f.close()
+
+
 def read_wordlist_file(file_name):
     """
     Reads a one-word-per-line list of words to accumulate (w,c) counts for.  Duplicates
