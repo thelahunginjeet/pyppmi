@@ -1,5 +1,7 @@
 import os,logging
 from collections import defaultdict
+from numpy import mod,power,log,sqrt
+from numpy.random import randint
 
 class PPMIModel(object):
     """
@@ -60,7 +62,7 @@ class PPMIModel(object):
         self.formatter = logging.Formatter('%(asctime)s : %(name)s : %(message)s')
         self.handler.setFormatter(self.formatter)
         self.logger.addHandler(self.handler)
-        self.logger.setLevel(logging.INFO)            
+        self.logger.setLevel(logging.INFO)
 
 
     def train(self):
@@ -105,7 +107,7 @@ class PPMIModel(object):
                         # don't do anything unless it's one of the words in the wordlist
                         if word in self.word_list:
                             # get the context
-                            context = self.context_map[self.hyperp['weighting']](tokens,i,self.hyperp['L'])
+                            context = self.context_map[self.hyperp['weighting']](tokens,i)
                             for c,v in context.items():
                                 if c in word_list:
                                     wc_counts[(word,c)] += v

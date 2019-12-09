@@ -14,7 +14,7 @@ class PyTest(Command):
         raise SystemExit(errno)
 
 setup(name='pyppmi',
-      version='0.1.0',
+      version='0.1.2',
       description='Python Implementaion of Positive Pointwise Mutual Information Semantic Model',
       author='Kevin Brown',
       author_email='kevin.brown@oregonstate.edu',
