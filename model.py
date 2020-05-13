@@ -1,13 +1,14 @@
-import os,logging
+import os,pickle
 from collections import defaultdict
 from numpy import mod,power,log,sqrt
 from numpy.random import randint
+
 
 class PPMIModel(object):
     """
     Implementation of a positive pointwise mutual information semantic model.
     """
-    def __init__(self,corpus_file,output_path,word_list,L=2,k=1,alpha=0.75,weighting='unweighted'):
+    def __init__(self,corpus_file,output_path,word_list,file_prefix='ppmi',L=2,k=1,alpha=0.75,weighting='unweighted'):
         """
         INPUT:
         ------
@@ -23,6 +24,9 @@ class PPMIModel(object):
                 any words not in the wordlist will be ignored both for purposes of producing word vectors
                 and calculating context; this has no effect on the eventual similarities and drastically
                 reduces the amount of space necessary to train the model
+
+            file_prefix: string, optional
+                prefix to write in front of vector and pairwise cosine similarity files
 
             L: integer, optional
                 half-window size (full context window will be of size 2*L + 1, symmetric about the center
@@ -47,22 +51,17 @@ class PPMIModel(object):
         self.context_map = {'unweighted':self.unweighted_context,'glove':self.glove_context,'word2vec':self.word2vec_context}
         self.corpus_file = corpus_file
         self.output_path = output_path
+        self.file_prefix = file_prefix
         # if the output_path does not exist, create it
         if not os.path.exists(self.output_path):
             os.mkdir(self.output_path)
-        self.word_list = word_list
+        # convert the word list to a dictionary for faster checking
+        self.word_list = {}.fromkeys(word_list)
         self.hyperp = {}
         self.hyperp['L'] = L
         self.hyperp['k'] = k
         self.hyperp['alpha'] = alpha
         self.hyperp['weighting'] = weighting
-        # custom logging module
-        self.logger = logging.getLogger(__name__)
-        self.handler = logging.StreamHandler()
-        self.formatter = logging.Formatter('%(asctime)s : %(name)s : %(message)s')
-        self.handler.setFormatter(self.formatter)
-        self.logger.addHandler(self.handler)
-        self.logger.setLevel(logging.INFO)
 
 
     def train(self):
@@ -70,8 +69,9 @@ class PPMIModel(object):
         Trains the model on the text in the corpus, using the current values of the
         hyperparameters.
         """
-        self.logger.info('Starting model')
-        self.logger.info('Writing to %s' % self.output_path)
+
+        print('Starting model')
+        print('Writing to',self.output_path)
 
         # do the pair counting
         wc_counts = self.count_pairs()
@@ -82,7 +82,7 @@ class PPMIModel(object):
         # compute all pairwise similiarities from the ppmi vectors
         sims = self.calculate_sims(ppmi)
 
-        self.logger.info('Model complete!')
+        print('Model complete!')
 
         return sims
 
@@ -99,7 +99,9 @@ class PPMIModel(object):
                 n_docs += 1
                 # list of tokens
                 tokens = line.strip().split()
-                # skip stub documents (smaller than the window)
+                # windows wrap around but indexing fails if the window is larger than the entire
+                #   sentence; this throws data out but only sort sentences for very long windows
+                #   (could fix this in the windowing functions later)
                 if len(tokens) > 2*self.hyperp['L'] + 1:
                     # iterate over tokens (positions)
                     for i in range(len(tokens)):
@@ -109,15 +111,16 @@ class PPMIModel(object):
                             # get the context
                             context = self.context_map[self.hyperp['weighting']](tokens,i)
                             for c,v in context.items():
-                                if c in word_list:
+                                if c in self.word_list:
                                     wc_counts[(word,c)] += v
                 # write a log message if we've made it through 10000 articles
                 if (n_docs % 10000 == 0):
-                    self.logger.info("Counted (w,c) pairs in  " + str(n_docs) + " articles")
-        self.logger.info("(w,c) pair counting complete!")
-        self.logger.info("Number of articles: " + str(n_docs))
+                    print("Counted (w,c) pairs in",str(n_docs),"lines")
+
+        print("(w,c) pair counting complete!")
+        print("Number of articles: " + str(n_docs))
         # dump the counts
-        pickle.dump(wc_counts,open(os.path.join(self.output_path,'wc-counts.pydb'),'wb'))
+        pickle.dump(wc_counts,open(os.path.join(self.output_path,self.file_prefix+'-wc-counts.pydb'),'wb'))
         return wc_counts
 
 
@@ -147,14 +150,14 @@ class PPMIModel(object):
         # now compute PPMI
         sum_Pwc = sum(wc_counts.values())
         for k in wc_counts:
-            ppmi_value = (wc_counts[k]/sum_Pwc)/(Pw[k[0]]*Pw[k[1]])
+            ppmi_value = (wc_counts[k]/sum_Pwc)/(Pw[k[0]]*Pc[k[1]])
             ppmi_value = max([log(ppmi_value)-log(self.hyperp['k']),0.0])
             if ppmi_value > 0.0:
                 ppmi[k[0]][k[1]] = ppmi_value
 
-        self.logger.info("PPMI vectors calculated!")
+        print("PPMI vectors calculated!")
         # dump the ppmi dict
-        pickle.dump(ppmi,open(os.path.join(self.output_path,'ppmi-vecs.pydb'),'wb'))
+        pickle.dump(ppmi,open(os.path.join(self.output_path,self.file_prefix+'-vecs.pydb'),'wb'))
         return ppmi
 
 
@@ -182,9 +185,9 @@ class PPMIModel(object):
                 cos_den = sqrt(sum([x**2 for x in ppmi[w_i].values()]))*sqrt(sum([x**2 for x in ppmi[w_j].values()]))
                 sims[(w_i,w_j)] = cos_num/cos_den
 
-        self.logger.info("Pairwise similarities calculated!")
+        print("Pairwise similarities calculated!")
         # dump the similarity database as a pickle
-        pickle.dump(sims,open(os.path.join(self.output_path,'ppmi-sims.pydb'),'wb'))
+        pickle.dump(sims,open(os.path.join(self.output_path,self.file_prefix+'-pair-sims.pydb'),'wb'))
 
 
     def unweighted_context(self,tokens,pos):
